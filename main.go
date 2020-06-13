@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/json"
+	"log"
 
 	"fmt"
 	"html/template"
@@ -12,7 +13,8 @@ import (
 	"regexp"
 	"strconv"
 	"time"
-	//Import this by exec in CLI: `go get -u github.com/TexaProject/texalib`
+
+	"github.com/0zAND1z/ipldcrud"
 	"github.com/TexaProject/texajson"
 	"github.com/TexaProject/texalib"
 )
@@ -145,6 +147,15 @@ func texaHandler(w http.ResponseWriter, r *http.Request) {
 		JsonCatPageArray := texajson.CatToJson(CatPageArray)
 		fmt.Println("###JsonCatPageArray: ")
 		fmt.Println(JsonCatPageArray)
+
+		ResultData, err := json.Marshal(CatPageArray)
+		if err != nil {
+			log.Println("Issue in marshaling CatPageArray!")
+		}
+		sh := ipldcrud.InitShell("http://localhost:5001")
+		resultCid := ipldcrud.Set(sh, ResultData)
+		fmt.Println("Results of the node are globally accessible at https://explore.ipld.io/#/explore/" + resultCid)
+		fmt.Println("You can also access them locally through ipld-explorer at http://localhost:3000/#/explore/" + resultCid)
 	}
 }
 
