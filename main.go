@@ -25,6 +25,71 @@ var AIName string
 // IntName exports form value from /texa globally
 var IntName string
 
+// // Results is a collection of result from each AI
+// type Results struct {
+// 	Results []Result
+// }
+
+// var allResultsData Results
+
+// Result is the master table recording the results of all test sessions for a given AI
+type Result struct {
+	AIName         string          `json:"AIName"`
+	Interrogations []Interrogation `json:"Interrogations"`
+}
+
+// Interrogation is used to record the data from a session
+type Interrogation struct {
+	IntName  string                 `json:"IntName"`
+	ArtiMts  float64                `json:"ArtiMts"`
+	HumanMts float64                `json:"HumanMts"`
+	CatVal   []texajson.CatValArray `json:"CatVal"`
+}
+
+// // CatVal is a structure to record the SPF for each slab or category
+// type CatVal struct {
+// 	CatName string `json:"CatName"`
+// 	Spf     int    `json:"Spf"`
+// }
+
+// // IsResultObjectExists is used to check if Result object exists for the given AI's name
+// func (allResultsData Results) IsResultObjectExists(aiName string) bool {
+// 	// _, ok := allResultsData[aiName]
+// 	// if ok {
+// 	// 	return true
+// 	// }
+// 	// return false
+// 	for _, result := range allResultsData.Results {
+// 		if result.AIName == aiName {
+// 			return true
+// 		}
+// 	}
+// 	return false
+// }
+
+// func (allResultsData Results) LoadResultObject(aiName string) (Result, bool) {
+// 	for _, result := range allResultsData.Results {
+// 		if result.AIName == aiName {
+// 			return result, true
+// 		}
+// 	}
+// 	return Result{}, false
+// }
+
+// // AddInterrogationData is used to update the new session data of an existing AI
+// func (ResultsData Result) AddInterrogationData(newSessionData Interrogation) {
+// 	ResultsData.Interrogations = append(ResultsData.Interrogations, newSessionData)
+// 	return
+// }
+
+// NewResultObject is used to create a new Result object for a new AI
+func NewResultObject(aiName string) Result {
+	return Result{
+		AIName:         aiName,
+		Interrogations: []Interrogation{},
+	}
+}
+
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/welcome", 301)
 }
@@ -83,6 +148,7 @@ func texaHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("###TSA:")
 		fmt.Println(TSA)
 
+		// The Mean Test Scores(MTS) help us understand who performed better in the test
 		ArtiMts := texalib.GetMeanTestScore(ArtiQSA)
 		HumanMts := texalib.GetMeanTestScore(HumanQSA)
 
@@ -148,16 +214,85 @@ func texaHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("###JsonCatPageArray: ")
 		fmt.Println(JsonCatPageArray)
 
-		ResultData, err := json.Marshal(CatPageArray)
-		if err != nil {
-			log.Println("Issue in marshaling CatPageArray!")
+		ResultObject := NewResultObject(AIName)
+
+		newSessionData := NewInterrogationObject(IntName, ArtiMts, HumanMts, CatPages.CatVal)
+		fmt.Println("PRINTING NEW SESSION DATA BEFORE ADDING: ", newSessionData)
+
+		ResultObject.Interrogations = append(ResultObject.Interrogations, newSessionData)
+		fmt.Println("PRINTING UPDATED RESULT OBJECT: ", ResultObject)
+
+		// fmt.Println("FINAL DATA IN BYTES: ", finalData)
+		// WriteToLocalCache(finalData)
+		cid := WriteDataToIPFS(ResultObject)
+		if len(cid) > 0 {
+			fmt.Println("Successfully wrote the session data to IPFS at ", cid)
 		}
-		sh := ipldcrud.InitShell("http://localhost:5001")
-		resultCid := ipldcrud.Set(sh, ResultData)
-		fmt.Println("Results of the node are globally accessible at https://explore.ipld.io/#/explore/" + resultCid)
-		fmt.Println("You can also access them locally through ipld-explorer at http://localhost:3000/#/explore/" + resultCid)
 	}
 }
+
+// NewInterrogationObject is created a new object and returns it
+func NewInterrogationObject(IntName string, ArtiMts, HumanMts float64, CatVal []texajson.CatValArray) Interrogation {
+	return Interrogation{
+		IntName:  IntName,
+		ArtiMts:  ArtiMts,
+		HumanMts: HumanMts,
+		CatVal:   CatVal,
+	}
+}
+
+// WriteDataToIPFS is used to write a data to IPFS using ipldcrud and return the CID
+func WriteDataToIPFS(data interface{}) string {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		log.Println("WriteDataToIPFS(): Issue in marshaling data!")
+	}
+	sh := ipldcrud.InitShell("http://localhost:5001") // Can be replaced with any hosted IPFS API URL also. Example: https://ipfs.infura.io:5001
+	resultCid := ipldcrud.Set(sh, bytes)
+	fmt.Println("WriteDataToIPFS(): Results of this testing session are globally accessible at https://explore.ipld.io/#/explore/" + resultCid)
+	fmt.Println("WriteDataToIPFS(): You can also access them locally through ipld-explorer at http://localhost:3000/#/explore/" + resultCid)
+	return resultCid
+}
+
+// func LoadFromLocalCache() Results {
+// 	RedisClient := redis.NewClient(&redis.Options{
+// 		Addr: "127.0.0.1:6379",
+// 	})
+// 	result, err := RedisClient.Ping().Result()
+// 	if err != nil {
+// 		panic("Err Connecting to Redis")
+// 	} else {
+// 		fmt.Println("Connected to Redis", result)
+// 	}
+
+// 	raw, err := RedisClient.Get("results").Result()
+// 	if err != nil && err.Error() != "redis: nil" {
+// 		fmt.Println(err.Error())
+// 		os.Exit(1)
+// 	}
+
+// 	var finalDataFromCache Results
+// 	json.Unmarshal([]byte(raw), &finalDataFromCache)
+// 	return finalDataFromCache
+// }
+
+// func WriteToLocalCache(finalData []byte) {
+// 	RedisClient := redis.NewClient(&redis.Options{
+// 		Addr: "127.0.0.1:6379",
+// 	})
+// 	result, err := RedisClient.Ping().Result()
+// 	if err != nil {
+// 		panic("Err Connecting to Redis")
+// 	} else {
+// 		fmt.Println("Connected to Redis", result)
+// 	}
+
+// 	err = RedisClient.Set("results", string(finalData), 0).Err()
+// 	if err != nil {
+// 		fmt.Println(err.Error())
+// 		os.Exit(1)
+// 	}
+// }
 
 func welcomeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("method:", r.Method) //get	request	method
